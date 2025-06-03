@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platformer Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Optional: Prevents scrollbars if the canvas is slightly off */
+            background-color: black; /* This sets the background to black */
+        }
+        /* Canvas styling is usually handled by Phaser's Scale Manager,
+           but you can add specific canvas styles here if needed. */
+        canvas {
+            display: block; /* Helps with centering and margin handling by the scale manager */
+        }
+    </style>
+    <script src="./lib/phaser.js"></script>
+    <script src="./src/Scenes/Load.js"></script>
+
+    <script src="./src/StateMachine.js"></script>
+    <script src="./src/PlayerStates.js"></script>
+    
+    <script src="./src/Scenes/Level1.js"></script>
+    <script src="./src/Scenes/SummaryScene.js"></script>
+    <script src="./src/Scenes/Player.js"></script>
+    <script src="./src/main.js"></script>
+</head>
+<body>
+    <div id="phaser-game"></div>
+    <span id="description"></span>
+</body>
+</html>
