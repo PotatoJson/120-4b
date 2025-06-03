@@ -19,6 +19,13 @@ class IdleState extends State {
     }
 
     execute() {
+        
+        if (!this.player.isCrouching && !this.player.cursors.down.isDown && !this.player.canStandUp()) {
+            console.log("IdleState: Space too tight (cannot stand), forcing crouch!");
+            this.stateMachine.transition('crouch', { fromState: 'idle_forced_by_ceiling' });
+            return;
+        }
+
         // Update timeLastGrounded if player is currently on the ground
         if (this.player.physics.body.blocked.down) {
             this.player.timeLastGrounded = this.player.scene.time.now;
@@ -119,6 +126,16 @@ class RunState extends State {
     }
 
     execute() {
+        
+        if (!this.player.isCrouching && !this.player.canStandUp()) {
+            console.log("RunState: Space too tight (cannot stand), forcing crouch!");
+            this.stateMachine.transition('crouch', {
+                fromState: 'run_forced_by_ceiling',
+                initialVelocityX: this.player.physics.body.velocity.x
+            });
+            return;
+        }
+
         if (this.player.physics.body.blocked.down) {
             this.player.timeLastGrounded = this.player.scene.time.now;
             this.player.hasAirDashed = false; // If player becomes grounded in RunState
@@ -291,6 +308,13 @@ class JumpState extends State {
                 this.player.jumpBufferTimer = 0;  // Consume buffer
                 this.stateMachine.transition('jump', { isActualJump: true });
                 return; 
+            }
+
+            // CHECK IF CAN STAND BEFORE TRANSITIONING TO IDLE/RUN
+            if (!this.player.canStandUp()) {
+                console.log("JumpState: Landing in tight spot, transitioning to crouch.");
+                this.stateMachine.transition('crouch', { fromState: 'jump_land_forced' });
+                return;
             }
 
             // If no buffered jump, then transition to idle or run as normal
@@ -765,7 +789,6 @@ class WallJumpState extends State {
     }
 }
 
-
 class GroundDashState extends State {
     enter({ fromCrouch = false } = {}) {
         this.player.fullSprite.setVisible(true); //
@@ -825,9 +848,19 @@ class GroundDashState extends State {
                             console.log("Transitioning to CROUCH from dash end (DELAYED)."); //
                             this.stateMachine.transition('crouch', { fromState: 'dash_end' }); //
                         } else {
-                            const nextState = (isOnFloor || isBlockedDown) ? 'idle' : 'jump'; //
-                            console.log(`Transitioning to ${nextState} from dash end (DELAYED). isOnFloor: ${isOnFloor}, isBlockedDown: ${isBlockedDown}`); //
-                            this.stateMachine.transition(nextState); //
+                            if (isOnFloor || isBlockedDown) { // Landed on ground
+                                // NOW, check if the player CAN stand where they landed if they are to go to Idle
+                                if (!this.player.canStandUp()) {
+                                    console.log("GroundDashState: Dash ended in tight spot (cannot stand), transitioning to CROUCH (DELAYED).");
+                                    this.stateMachine.transition('crouch', { fromState: 'dash_land_forced' });
+                                } else {
+                                    console.log(`Transitioning to IDLE from dash end (DELAYED). isOnFloor: ${isOnFloor}, isBlockedDown: ${isBlockedDown}`);
+                                    this.stateMachine.transition('idle');
+                                }
+                            } else { // Still in air after dash
+                                console.log(`Transitioning to JUMP from dash end (DELAYED). isOnFloor: ${isOnFloor}, isBlockedDown: ${isBlockedDown}`);
+                                this.stateMachine.transition('jump');
+                            }
                         }
                     } else {
                         console.log("GroundDashState: State changed during 16ms ground check delay. Aborting transition from ground check.");
@@ -1045,14 +1078,44 @@ enter({ fromState = 'idle', initialVelocityX = 0 } = {}) {
             }
         }
 
+        // Check if player tries to stand up
         if (!this.player.cursors.down.isDown) {
+            if (this.player.canStandUp()) { // <<< CHECK IF SPACE TO STAND
+                // Enough space, transition as normal
+                if (this.player.cursors.left.isDown || this.player.cursors.right.isDown) {
+                    this.stateMachine.transition('run');
+                } else {
+                    this.stateMachine.transition('idle');
+                }
+                return;
+            } else {
+                // Not enough space, remain crouched
+                // Ensure player is visually in crouch idle and not moving if slide was completed
+                if (this.slideCompleted) {
+                    this.player.fullSprite.play('crouch'); // Play crouch idle
+                    this.player.physics.setVelocityX(0);   // Stop horizontal movement
+                }
+                // Player stays in CrouchState implicitly
+            }
+        }   
+
+        if (!this.player.cursors.down.isDown) {
+        if (this.player.canStandUp()) { // <<< CHECK IF SPACE TO STAND
+            // Enough space, transition as normal
             if (this.player.cursors.left.isDown || this.player.cursors.right.isDown) {
                 this.stateMachine.transition('run');
             } else {
                 this.stateMachine.transition('idle');
             }
             return;
+        } else {
+            // Not enough space, remain crouched
+            if (this.slideCompleted) {
+                this.player.fullSprite.play('crouch'); 
+                this.player.physics.setVelocityX(0);   
+            }
         }
+    }
 
         if (Phaser.Input.Keyboard.JustDown(this.player.jumpKey)) {
             this.stateMachine.transition('jump', { isActualJump: true });

@@ -326,6 +326,55 @@ class Player extends Phaser.GameObjects.Container {
         console.log(`Player respawned at (${x}, ${y})`);
     }
 
+
+    // In Player.js
+    canStandUp() {
+        if (!this.scene || !this.physics || !this.normalBodySize || !this.crouchBodySize || !this.scene.groundLayer) {
+            console.warn("Player.canStandUp: Missing components. Defaulting to allow standing.");
+            return true;
+        }
+
+        const crouchBodyTopWorldY = this.physics.y + this.crouchBodySize.offsetY;
+        const normalBodyTopWorldY = this.physics.y + this.normalBodySize.offsetY;
+        const headroomCheckY = normalBodyTopWorldY;
+        const headroomCheckHeight = crouchBodyTopWorldY - normalBodyTopWorldY;
+
+        if (headroomCheckHeight <= 0) {
+            return true;
+        }
+
+        const checkX = this.physics.x + this.normalBodySize.offsetX;
+        const checkWidth = this.normalBodySize.width *0.75;
+        const checkRect = new Phaser.Geom.Rectangle(checkX, headroomCheckY, checkWidth, headroomCheckHeight);
+
+        // --- DETAILED LOGS ---
+        // console.log(`[canStandUp] Player physicsSprite center: (${this.physics.x.toFixed(1)}, ${this.physics.y.toFixed(1)})`);
+        // console.log(`[canStandUp] Normal OffsetY: ${this.normalBodySize.offsetY}, Crouch OffsetY: ${this.crouchBodySize.offsetY}`);
+        // console.log(`[canStandUp] Normal TopY (world): ${normalBodyTopWorldY.toFixed(1)}, Crouch TopY (world): ${crouchBodyTopWorldY.toFixed(1)}`);
+        // console.log(`[canStandUp] Checking HEADROOM Rect: [x:<span class="math-inline">\{checkRect\.x\.toFixed\(1\)\}, y\:</span>{checkRect.y.toFixed(1)}, w:<span class="math-inline">\{checkRect\.width\}, h\:</span>{checkRect.height.toFixed(1)}]`);
+
+        if (this.scene.debugGraphics) { // Ensure this.scene.debugGraphics is created in your scene
+            this.scene.debugGraphics.clear().strokeRectShape(checkRect);
+        }
+
+        const tiles = this.scene.groundLayer.getTilesWithinWorldXY(checkRect.x, checkRect.y, checkRect.width, checkRect.height, { isNotEmpty: true });
+
+        if (tiles.length > 0) {
+            // console.log(`[canStandUp] Found ${tiles.length} non-empty tiles in HEADROOM area.`);
+            for (const tile of tiles) {
+                if (tile && tile.collides) {
+                    // console.log(`[canStandUp] HEADROOM COLLISION with tile at world:(<span class="math-inline">\{tile\.getCenterX\(\)\.toFixed\(1\)\},</span>{tile.getCenterY().toFixed(1)}), tilemap coords:[<span class="math-inline">\{tile\.x\},</span>{tile.y}], index:${tile.index}. RESULT: CANNOT STAND.`);
+                    return false;
+                }
+            }
+        } else {
+            // console.log("[canStandUp] No non-empty tiles found in HEADROOM area.");
+        }
+
+        // console.log("[canStandUp] No collidable tiles blocking HEADROOM. RESULT: CAN STAND.");
+        return true;
+    }
+
     setPlayerCrouchHitbox() {
         if (this.crouchBodySize) { // Ensure crouchBodySize is defined
             this.physics.body.setSize(this.crouchBodySize.width, this.crouchBodySize.height);
