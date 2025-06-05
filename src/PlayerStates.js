@@ -11,6 +11,7 @@ class IdleState extends State {
         this.player.physics.setDragX(this.player.DRAG);
         if (this.player.physics.body.blocked.down) { // Reset if entering idle while grounded
             this.player.hasAirDashed = false;
+            this.player.canAirJump = false;
             this.player.timeLastGrounded = this.player.scene.time.now; // Update timeLastGrounded
         }
         // Manage particles
@@ -20,6 +21,17 @@ class IdleState extends State {
 
     execute() {
         
+        // Check for dropping through a semi-solid platform (TAP)
+        if (this.player.cursors.down.isDown && Phaser.Input.Keyboard.JustDown(this.player.jumpKey) && this.player.physics.body.blocked.down) {
+            // console.log("IdleState: Player attempting to drop through platform via tap.");
+            this.player.isAttemptingDropThrough = true;
+            // Immediately transition to jump/fall state.
+            // processSemiSolidCollision will handle making the player pass through.
+            if (this.player.stopIdleParticles) this.player.stopIdleParticles();
+            this.stateMachine.transition('jump'); // isActualJump will default to false
+            return; // Exit after transitioning
+        }
+
         if (!this.player.isCrouching && !this.player.cursors.down.isDown && !this.player.canStandUp()) {
             console.log("IdleState: Space too tight (cannot stand), forcing crouch!");
             this.stateMachine.transition('crouch', { fromState: 'idle_forced_by_ceiling' });
@@ -31,6 +43,7 @@ class IdleState extends State {
             this.player.timeLastGrounded = this.player.scene.time.now;
             // If player becomes grounded in IdleState (e.g. after a short fall without moving)
             this.player.hasAirDashed = false;
+            this.player.canAirJump = false;
         }
         
         if (Phaser.Input.Keyboard.JustDown(this.player.dashKey) && this.player.canDash) {
@@ -60,10 +73,11 @@ class IdleState extends State {
                     }
                     this.player.timeLastGrounded = 0; // Consume coyote/ground status
                     this.player.jumpBufferTimer = 0;  // IMPORTANT: Consume the buffered jump
+                    this.player.hasAirDashed = false; // Reset air dash status on jump
 
-                    console.log("IdleState: Attempting particle calls before jump transition...");
+                    // console.log("IdleState: Attempting particle calls before jump transition...");
                     if (this.player.emitJumpParticles) {
-                        console.log("IdleState: Calling player.emitJumpParticles()");
+                        // console.log("IdleState: Calling player.emitJumpParticles()");
                         this.player.emitJumpParticles();
                     } else {
                         console.error("IdleState: ERROR - player.emitJumpParticles is NOT defined!");
@@ -79,7 +93,7 @@ class IdleState extends State {
                     // if (this.player.emitJumpParticles) this.player.emitJumpParticles(); // Emit before transition
                     // if (this.player.stopIdleParticles) this.player.stopIdleParticles();
 
-                    this.stateMachine.transition('jump', { isActualJump: true });
+                    this.stateMachine.transition('jump', { isActualJump: true, isAirJump: false });
                     return; // Exit after transitioning
                 }
             }
@@ -115,6 +129,7 @@ class RunState extends State {
         this.player.fullSprite.play('run');
         if (this.player.physics.body.blocked.down) { // Reset if entering run while grounded
             this.player.hasAirDashed = false;
+            this.player.canAirJump = false;
             this.player.timeLastGrounded = this.player.scene.time.now; // Update timeLastGrounded
         }
         // Manage particles
@@ -127,6 +142,17 @@ class RunState extends State {
 
     execute() {
         
+        // Check for dropping through a semi-solid platform (TAP)
+        if (this.player.cursors.down.isDown && Phaser.Input.Keyboard.JustDown(this.player.jumpKey) && this.player.physics.body.blocked.down) {
+            // console.log("RunState: Player attempting to drop through platform via tap.");
+            this.player.isAttemptingDropThrough = true;
+            // Immediately transition to jump/fall state.
+            // processSemiSolidCollision will handle making the player pass through.
+            if (this.player.stopIdleParticles) this.player.stopRunParticles();
+            this.stateMachine.transition('jump'); // isActualJump will default to false
+            return; // Exit after transitioning
+        }
+
         if (!this.player.isCrouching && !this.player.canStandUp()) {
             console.log("RunState: Space too tight (cannot stand), forcing crouch!");
             this.stateMachine.transition('crouch', {
@@ -139,6 +165,7 @@ class RunState extends State {
         if (this.player.physics.body.blocked.down) {
             this.player.timeLastGrounded = this.player.scene.time.now;
             this.player.hasAirDashed = false; // If player becomes grounded in RunState
+            this.player.canAirJump = false;
         }
         
         if (Phaser.Input.Keyboard.JustDown(this.player.dashKey) && this.player.canDash) {
@@ -167,10 +194,11 @@ class RunState extends State {
                     }
                     this.player.timeLastGrounded = 0; // Consume coyote/ground status
                     this.player.jumpBufferTimer = 0;  // IMPORTANT: Consume the buffered jump
+                    this.player.hasAirDashed = false; // Reset air dash status on jump
 
                     if (this.player.stopRunParticles) this.player.stopRunParticles();
                     if (this.player.emitJumpParticles) this.player.emitJumpParticles();
-                    this.stateMachine.transition('jump', { isActualJump: true });
+                    this.stateMachine.transition('jump', { isActualJump: true, isAirJump: false });
                     return; // Exit after transitioning
                 }
             }
@@ -235,7 +263,7 @@ class RunState extends State {
 }
 
 class JumpState extends State {
-    enter({ isActualJump = false } = {}) {
+    enter({ isActualJump = false, isAirJump = false } = {}) {
     
         if (this.player.setPlayerNormalHitbox) { 
             this.player.setPlayerNormalHitbox();
@@ -246,16 +274,37 @@ class JumpState extends State {
         this.player.physics.setDragX(0);
 
         if (isActualJump) {
-                // This jump was initiated by player input (ground or coyote)
+            if (isAirJump) { // This is the crystal-powered air jump
+                console.log("JumpState: ENTER - Performing Crystal Air Jump");
+                this.player.physics.setVelocityY(this.player.JUMP_VELOCITY);
+                this.player.jumpBeingHeld = true; 
+                this.player.jumpCutoff = false;
+                this.player.hasAirDashed = false; // Crystal air jump also refreshes air dash
+                this.player.canAirJump = false;   // Consume the crystal air jump ability
+                if (this.player.emitJumpParticles) this.player.emitJumpParticles();
+            } else { // This is a ground jump
+                console.log("JumpState: ENTER - Performing Ground Jump");
                 this.player.physics.setVelocityY(this.player.JUMP_VELOCITY);
                 this.player.jumpBeingHeld = true;
                 this.player.jumpCutoff = false;
-                this.player.hasAirDashed = false; // Reset air dash for a "fresh" jump from ground/coyote
+                // this.player.hasAirDashed was set by Idle/Run
+                // this.player.canAirJump is NOT granted by a ground jump, remains as it was
+            }
+        } else {
+            // Player is just entering fall state
+            console.log("JumpState: ENTER - Falling (no specific jump action)");
         }
 }
 
 
     execute() {
+        // Crystal-Powered Air Jump Logic
+        if (Phaser.Input.Keyboard.JustDown(this.player.jumpKey) && this.player.canAirJump) {
+            console.log("JumpState: Attempting Crystal Air Jump!");
+            this.stateMachine.transition('jump', { isActualJump: true, isAirJump: true });
+            return; 
+        }
+        
         if (this.player.jumpBeingHeld && !this.player.jumpKey.isDown && !this.player.jumpCutoff && this.player.physics.body.velocity.y < 0) {
             this.player.physics.setVelocityY(this.player.physics.body.velocity.y * 0.35);
             this.player.jumpCutoff = true;
@@ -300,6 +349,10 @@ class JumpState extends State {
 
         // Transition to Idle when grounded
         if (this.player.physics.body.blocked.down) {
+
+            this.player.canAirJump = false; // Lose crystal air jump on landing
+            this.player.hasAirDashed = false;   // Also reset air dash on landing
+
             const jumpBufferedAndValid = this.player.jumpBufferTimer > 0 &&
                                     (this.player.scene.time.now - this.player.jumpBufferTimer < this.player.JUMP_BUFFER_DURATION);
 
@@ -385,6 +438,22 @@ class AirAttackState extends State {
     }
 
     execute() {
+        
+        if (Phaser.Input.Keyboard.JustDown(this.player.jumpKey) && this.player.canAirJump) {
+            console.log("AirAttackState: Attempting Crystal Air Jump!");
+            // Clean up attack state before transitioning (same as before)
+            if (this.attackTimer) this.attackTimer.remove();
+            if (this.hitboxDelayTimer) this.hitboxDelayTimer.remove();
+            this.player.attackHitbox.setVisible(false).body.setEnable(false);
+            if (this.player._airAttackUpdateHandler) { /* ... off event ... */ }
+            this.player.fullSprite.setVisible(true); 
+            this.player.legsSprite.setVisible(false);
+            this.player.upperSprite.setVisible(false);
+
+            this.stateMachine.transition('jump', { isActualJump: true, isAirJump: true });
+            return;
+        }
+
         if (Phaser.Input.Keyboard.JustDown(this.player.dashKey) && this.player.canDash && !this.player.hasAirDashed) {
             // Clear attack timer and other attack-specific cleanup if dashing out of attack
             if (this.attackTimer) this.attackTimer.remove();
@@ -458,212 +527,163 @@ class AirAttackState extends State {
 
 class WallSlideState extends State {
     enter() {
-        this.player.fullSprite.play('wallSlide');
-        this.player.physics.setVelocityY(0); // Initially stop vertical movement
-        this.player.physics.setVelocityX(0); // CRITICAL: Stop horizontal movement that might pull away from the wall
+        this.player.fullSprite.play('wallSlide'); //
+        this.player.physics.setVelocityY(0); // Stop Y movement first //
+        // It's often good to neutralize X velocity before determining wall and nudging
+        // this.player.physics.setVelocityX(0); 
 
-        const body = this.player.physics.body;
-        let facingDirectionToSet = 0;
-        let determinedLastWallSide = null;
-        let wallSideBasedOnBlocked = null; // <<< DECLARED HERE
+        const body = this.player.physics.body; //
+        let determinedLastWallSide = null; //
 
-
-        
-
-        // Determine wall and facing direction
-        // It's possible body.blocked is not yet true if shouldWallSlide was based on a tile edge graze
-        // So, prioritize current input if body.blocked isn't definitive yet.
-        if (body.blocked.left) {
-            facingDirectionToSet = -1; // Face right (away from left wall)
-            determinedLastWallSide = 'left';
-        } else if (body.blocked.right) {
-            facingDirectionToSet = 1; // Face left (away from right wall)
-            determinedLastWallSide = 'right';
-        } else if (this.player.cursors.left.isDown && this.player.physics.body.velocity.y > 0) {
-            // If pressing left and falling, likely trying to attach to a left wall
-            // Check if a wall is *actually* there if body.blocked.left isn't true yet.
-            // For now, assume input means intent if body.blocked isn't yet set from a hard collision.
-            facingDirectionToSet = 1;
-            determinedLastWallSide = 'left';
-        } else if (this.player.cursors.right.isDown && this.player.physics.body.velocity.y > 0) {
-            // If pressing right and falling
-            facingDirectionToSet = -1;
-            determinedLastWallSide = 'right';
+        // Determine which wall the player is on.
+        // Prioritize definite body.blocked contact, then check input if not blocked.
+        if (body.blocked.left) { //
+            determinedLastWallSide = 'left'; //
+        } else if (body.blocked.right) { //
+            determinedLastWallSide = 'right'; //
+        } else if (this.player.cursors.left.isDown && !body.blocked.right && body.velocity.y >= 0) {
+            // If pressing left, not blocked on right, and falling or stationary Y
+            determinedLastWallSide = 'left'; //
+        } else if (this.player.cursors.right.isDown && !body.blocked.left && body.velocity.y >= 0) {
+            // If pressing right, not blocked on left, and falling or stationary Y
+            determinedLastWallSide = 'right'; //
         }
-
 
         if (determinedLastWallSide) {
-            this.player.lastWallSide = determinedLastWallSide;
-            if (facingDirectionToSet !== 0) {
-                this.player.setFacingDirection(facingDirectionToSet, true); // Force the direction
-            }
+            this.player.lastWallSide = determinedLastWallSide; //
+            const spriteFacingDirection = (determinedLastWallSide === 'left') ? -1 : 1; // Face away from wall //
+            this.player.setFacingDirection(spriteFacingDirection, true); //
 
-            const immediateNudgeForce = 15; // Or try 20-30
-            if (wallSideBasedOnBlocked === 'left') {
-                this.player.physics.setVelocityX(-immediateNudgeForce);
-            } else if (wallSideBasedOnBlocked === 'right') {
-                this.player.physics.setVelocityX(immediateNudgeForce);
+            // Nudge INTO the wall more firmly to help establish physics contact
+            const nudgeForce = 30; // Increased from 10. Adjust if too strong/weak.
+            if (determinedLastWallSide === 'left') {
+                this.player.physics.setVelocityX(-nudgeForce); //
+            } else { // right wall
+                this.player.physics.setVelocityX(nudgeForce); //
             }
+            // console.log(`WallSlide ENTER: Nudged to ${determinedLastWallSide} with force ${nudgeForce}. VelX: ${this.player.physics.body.velocity.x}`);
         } else {
-            // If still no wall determined (e.g., entered from a state where input wasn't held, or no wall nearby)
-            console.warn("WallSlideState enter: Could not determine a wall to slide on based on current body.blocked or input. Transitioning to jump.");
-            this.stateMachine.transition('jump'); // Bail out
-            return;
+            // If no wall could be determined (e.g., player grazed a corner without enough contact or input)
+            // console.warn("WallSlideState enter: Could not determine wall. Transitioning to jump.");
+            this.stateMachine.transition('jump'); // Bail out to JumpState //
+            return; 
         }
-
-        // console.log(`Entering WallSlide, lastWallSide: ${this.player.lastWallSide}, Facing: ${this.player.container.scaleX > 0 ? 1 : -1}, VelX After Nudge: ${this.player.physics.body.velocity.x.toFixed(2)}`); // Keep your log
         
-        this.player.timeLostWallContact = 0;
-
-        this.player.isSliding = true;
-        this.player.canWallJump = true;
-        this.player.hasAirDashed = false;
+        this.player.timeLostWallContact = 0; //
+        this.player.isSliding = true; //
+        this.player.canWallJump = true; //
+        this.player.hasAirDashed = false; // Wall slide refreshes air dash //
+        // this.player.canAirJump = false; // Wall slide resets crystal air jump (already in your code)
     }
 
     execute() {
-        const body = this.player.physics.body;
-        const cursors = this.player.cursors;
-        const sceneTime = this.player.scene.time; // Get reference to scene.time
+        const body = this.player.physics.body; //
+        const cursors = this.player.cursors; //
+        const sceneTime = this.player.scene.time.now; // Use .now for consistency //
 
-
-        // --- Primary Exits (Should interrupt sliding immediately) ---
-
-        // 1. Dash Off Wall
-        if (Phaser.Input.Keyboard.JustDown(this.player.dashKey) && this.player.canDash && !this.player.hasAirDashed) {
-            if (this.player.lastWallSide === 'left') {
-                this.player.dashAwayFromWallDirection = 1; // Dash Right (away from left wall)
-            } else if (this.player.lastWallSide === 'right') {
-                this.player.dashAwayFromWallDirection = -1; // Dash Left (away from right wall)
-            } else {
-                this.player.dashAwayFromWallDirection = 0; // Fallback to normal dash if lastWallSide is unknown
-            }
-            this.stateMachine.transition('airDash');
+        // --- Primary Exits (Highest Priority) ---
+        if (Phaser.Input.Keyboard.JustDown(this.player.jumpKey)) { //
+            this.stateMachine.transition('wallJump'); //
+            return;
+        }
+        
+        if (Phaser.Input.Keyboard.JustDown(this.player.dashKey) && this.player.canDash && !this.player.hasAirDashed) { //
+            if (this.player.lastWallSide === 'left') this.player.dashAwayFromWallDirection = 1;  //
+            else if (this.player.lastWallSide === 'right') this.player.dashAwayFromWallDirection = -1;  //
+            else this.player.dashAwayFromWallDirection = 0;  //
+            this.stateMachine.transition('airDash'); //
             return;
         }
 
-        // 2. Wall Jump
-        if (Phaser.Input.Keyboard.JustDown(this.player.jumpKey)) {
-            this.stateMachine.transition('wallJump');
-            return;
-        }
-
-        // 3. Explicit Detach (Pressing away from the wall)
-        let explicitlyDetaching = false;
-        if (this.player.lastWallSide === 'left' && cursors.right.isDown && !cursors.left.isDown) {
-            explicitlyDetaching = true;
-        } else if (this.player.lastWallSide === 'right' && cursors.left.isDown && !cursors.right.isDown) {
-            explicitlyDetaching = true;
-        }
+        // Explicit Detach (Pressing away from the wall)
+        let explicitlyDetaching = false; //
+        if (this.player.lastWallSide === 'left' && cursors.right.isDown && !cursors.left.isDown) explicitlyDetaching = true; //
+        else if (this.player.lastWallSide === 'right' && cursors.left.isDown && !cursors.right.isDown) explicitlyDetaching = true; //
 
         if (explicitlyDetaching) {
-            this.player.wallJumpGraceTimer = this.player.scene.time.now + 150; // Grace of 150ms for explicit detach
-            this.player.physics.setVelocityX(0); // Stop any inward hold if detaching
-            this.stateMachine.transition('jump');
+            this.player.wallJumpGraceTimer = sceneTime + 150; // Grace for explicit detach
+            this.player.physics.setVelocityX(0); // Stop any inward hold //
+            this.stateMachine.transition('jump'); //
             return;
         }
 
-        // --- Apply Slide Dynamics ---
-        this.player.physics.setVelocityY(this.player.WALL_SLIDE_SPEED);
+        // --- Apply Slide Dynamics & Stickiness ---
+        this.player.physics.setVelocityY(this.player.WALL_SLIDE_SPEED); //
 
-        // Apply a slight inward force to maintain contact IF NOT detaching AND pressing into wall
-        const wallStickForce = 100; // Small force, adjust as needed.
-        if (this.player.lastWallSide === 'left' && cursors.left.isDown) {
-            this.player.physics.setVelocityX(-wallStickForce);
-        } else if (this.player.lastWallSide === 'right' && cursors.right.isDown) {
-            this.player.physics.setVelocityX(wallStickForce);
-        } else {
-            // If not pressing into the wall, don't apply stick force. Player might detach.
-            // Set X velocity to 0 to prevent carrying over old stick force or other momentum.
-            this.player.physics.setVelocityX(0);
-        }
+        let isPressingIntoCurrentWall = false; //
+        if (this.player.lastWallSide === 'left' && cursors.left.isDown) isPressingIntoCurrentWall = true; //
+        else if (this.player.lastWallSide === 'right' && cursors.right.isDown) isPressingIntoCurrentWall = true; //
 
-        // --- Conditions to Stop Sliding (and transition) ---
+        const contactWithCurrentWall = (this.player.lastWallSide === 'left' && body.blocked.left) || (this.player.lastWallSide === 'right' && body.blocked.right); //
 
-        // A. Hit the ground
-        if (body.blocked.down) {
-            this.stateMachine.transition('idle');
-            return;
-        }
+        if (isPressingIntoCurrentWall) {
+            // Player is actively pressing towards the wall they are supposed to be sliding on.
+            const wallStickForce = 30; // Increased stick force (was 10). Adjust as needed.
+            if (this.player.lastWallSide === 'left') this.player.physics.setVelocityX(-wallStickForce); //
+            else this.player.physics.setVelocityX(wallStickForce); //
 
-        // B. No longer falling (e.g., hit an overhang that's not ground but stops Y movement)
-        // Only transition if Y velocity is not already being driven by WALL_SLIDE_SPEED.
-        // This check is usually for external forces stopping the slide.
-        // If WALL_SLIDE_SPEED is positive, this means something else made velocity Y <= 0.
-        if (body.velocity.y <= 0 && this.player.WALL_SLIDE_SPEED > 0 && !body.blocked.down) {
-            console.log(`WS: Vertical movement stopped unexpectedly. VelY: ${body.velocity.y.toFixed(2)}. Transitioning to jump.`);
-            this.stateMachine.transition('jump');
-            return;
-        }
-
-        // C. "Stickiness" Logic: Check if still intending to slide and if the specific wall contact is maintained.
-        let isPressingIntoCorrectWall = false;
-        let specificWallIsCurrentlyBlocked = false;
-
-        if (this.player.lastWallSide === 'left' && cursors.left.isDown) {
-            isPressingIntoCorrectWall = true;
-            if (body.blocked.left) {
-                specificWallIsCurrentlyBlocked = true;
-            }
-        } else if (this.player.lastWallSide === 'right' && cursors.right.isDown) {
-            isPressingIntoCorrectWall = true;
-            if (body.blocked.right) {
-                specificWallIsCurrentlyBlocked = true;
-            }
-        }
-
-        if (isPressingIntoCorrectWall) {
-        if (specificWallIsCurrentlyBlocked) {
-            // Solid contact with the expected wall, continue wall sliding.
-            this.player.timeLostWallContact = 0; // Reset lost contact timer
-
-            // Inner corner switch logic (your existing logic for this is good)
-            if (body.blocked.right && this.player.lastWallSide === 'left' && cursors.right.isDown && !cursors.left.isDown) {
-                console.log("WS: Switched to right wall in inner corner.");
-                this.player.lastWallSide = 'right';
-                this.player.setFacingDirection(-1, true);
-            } else if (body.blocked.left && this.player.lastWallSide === 'right' && cursors.left.isDown && !cursors.right.isDown) {
-                console.log("WS: Switched to left wall in inner corner.");
-                this.player.lastWallSide = 'left';
-                this.player.setFacingDirection(1, true);
-            }
-        } else {
-            // Pressing into the wall, but the specific wall is NOT currently blocked.
-            // Start or check the grace period timer.
-            if (this.player.timeLostWallContact === 0) {
-                // First frame contact was lost according to physics, start the timer.
-                this.player.timeLostWallContact = sceneTime.now + this.player.wallContactGracePeriodDuration;
-                // console.log(`WS: Initial lost contact with ${this.player.lastWallSide} wall. Grace period started (until ${this.player.timeLostWallContact}). Blocked L/R: <span class="math-inline">\{body\.blocked\.left\}/</span>{body.blocked.right}.`);
-            } else if (sceneTime.now > this.player.timeLostWallContact) {
-                // Grace period has expired, and contact was not re-established. Detach.
-                // console.log(`WS: Grace period for ${this.player.lastWallSide} wall EXPIRED. Lost contact. Blocked L/R: <span class="math-inline">\{body\.blocked\.left\}/</span>{body.blocked.right}. VelY: ${body.velocity.y.toFixed(2)}. Transitioning to jump.`);
-                this.stateMachine.transition('jump');
-                return;
+            if (contactWithCurrentWall) {
+                // Solid contact with the expected wall, continue wall sliding.
+                this.player.timeLostWallContact = 0; // Reset lost contact timer.
             } else {
-                // Grace period is active, still "sliding" for a few frames hoping for re-contact.
-                // console.log(`WS: Lost contact grace period active for ${this.player.lastWallSide} wall. Time: ${scene.time.now}, Expires: ${this.player.timeLostWallContact}`);
+                // Pressing into wall, but physics says no contact. Start/check grace period.
+                if (this.player.timeLostWallContact === 0) {
+                    // First frame contact was lost (or never established this frame), start the timer.
+                    // Increase grace period from 50ms (Player.js) to 75ms (approx 4-5 frames).
+                    this.player.timeLostWallContact = sceneTime + 75; // Use this.player.wallContactGracePeriodDuration if you prefer
+                    // console.log(`WS: Lost contact with ${this.player.lastWallSide}, grace started (75ms)`);
+                } else if (sceneTime > this.player.timeLostWallContact) {
+                    // Grace period has expired, and contact was not re-established. Detach.
+                    // console.log(`WS: Grace for ${this.player.lastWallSide} expired, detaching.`);
+                    this.stateMachine.transition('jump'); //
+                    return;
+                }
+                // Else: Grace period is active, continue "sliding" hoping for re-contact.
             }
+        } else {
+            // Not pressing into the current wall direction anymore. Detach immediately.
+            // console.log(`WS: Not pressing into ${this.player.lastWallSide}, detaching.`);
+            this.player.physics.setVelocityX(0); // Neutralize X movement. //
+            this.stateMachine.transition('jump'); //
+            return;
         }
-    } else {
-        // Not pressing into the correct wall direction anymore. This should still be an immediate detach.
-        // console.log(`WS: Detaching - No longer pressing into ${this.player.lastWallSide} wall. Blocked L/R: <span class="math-inline">\{body\.blocked\.left\}/</span>{body.blocked.right}. VelY: ${body.velocity.y.toFixed(2)}. Transitioning to jump.`);
-        this.player.physics.setVelocityX(0); // Ensure X velocity is neutral
-        this.stateMachine.transition('jump');
-        return;
-    }
+
+        // --- Ground Check (final check before loop end) ---
+        if (body.blocked.down) { //
+            this.stateMachine.transition('idle'); //
+            return;
+        }
+        
+        // (Optional: Check for body.velocity.y <= 0 if WALL_SLIDE_SPEED > 0 - already in your code)
+        if (body.velocity.y <= 0 && this.player.WALL_SLIDE_SPEED > 0 && !body.blocked.down) { //
+            // This case handles if something externally stops the downward slide (e.g., hitting an overhang not tagged as ground)
+            // console.log(`WS: Vertical movement stopped unexpectedly. VelY: ${body.velocity.y.toFixed(2)}. Transitioning to jump.`);
+            this.stateMachine.transition('jump'); //
+            return;
+        }
     }
 
     exit() {
-        this.player.isSliding = false;
-        this.player.canWallJump = false;
-        // this.player.physics.setVelocityX(0); // Optional: reset X velocity on exit if needed by subsequent states
+        this.player.isSliding = false; //
+        this.player.canWallJump = false; //
+        // this.player.physics.setVelocityX(0); // Often good to reset X vel, but subsequent states might override.
 
-        const explicitDetachGracePeriod = 150; //
-        // Check if wallJumpGraceTimer was ALREADY set by an explicit detach in execute()
-        // If not, then set the general grace period.
-        if (!(this.player.wallJumpGraceTimer > this.player.scene.time.now &&
-              this.player.wallJumpGraceTimer < this.player.scene.time.now + explicitDetachGracePeriod + 10)) { //
-             this.player.wallJumpGraceTimer = this.player.scene.time.now + 200; // General grace period //
+        // The refined exit logic from previous answer to handle wallJumpGraceTimer
+        // based on whether exiting to 'wallJump' or not is still recommended:
+        const isExitingToWallJump = (this.stateMachine.nextStateName === 'wallJump'); //
+
+        if (isExitingToWallJump) {
+            this.player.wallJumpGraceTimer = 0; // Neutralize grace for next wall //
+        } else {
+            const explicitDetachWindow = 160; //
+            if (this.player.wallJumpGraceTimer > this.player.scene.time.now &&
+                this.player.wallJumpGraceTimer < this.player.scene.time.now + explicitDetachWindow) { //
+                // Explicit detach timer is active, leave it.
+            } else {
+                this.player.wallJumpGraceTimer = this.player.scene.time.now + 100; // General detach grace 100ms //
+            }
         }
+        // console.log(`WallSlide exiting. Next: ${this.stateMachine.nextStateName}. Grace timer target: ${this.player.wallJumpGraceTimer}. Current time: ${this.player.scene.time.now}`);
     }
 }
 
@@ -718,7 +738,14 @@ class WallJumpState extends State {
         const scene = this.player.scene;
         const body = this.player.physics.body;
         const cursors = this.player.cursors;
+        const allowActions = scene.time.now > this.player.wallJumpActionDelayTimer;
 
+        // Crystal Air Jump from WallJumpState (if they had it before wall jumping)
+        if (allowActions && Phaser.Input.Keyboard.JustDown(this.player.jumpKey) && this.player.canAirJump) {
+            console.log("WallJumpState: Attempting Crystal Air Jump!");
+            this.stateMachine.transition('jump', { isActualJump: true, isAirJump: true });
+            return;
+        }
         // Log current state values for debugging
         // console.log(`WallJump EXECUTE: blocked.down=${body.blocked.down}, Y=${this.player.physics.y.toFixed(2)}, VelY=${body.velocity.y.toFixed(2)}, GroundCheckAllowed=${scene.time.now > this.player.wallJumpGroundCheckDelayTimer}`);
 
@@ -741,7 +768,6 @@ class WallJumpState extends State {
             return;
         }
         
-        const allowActions = scene.time.now > this.player.wallJumpActionDelayTimer; // Can regain control / re-slide
 
         // 3. Check for re-attaching to wall slide (only after action delay)
         if (allowActions && this.player.shouldWallSlide()) {
@@ -772,6 +798,13 @@ class WallJumpState extends State {
         if (this.player.jumpBeingHeld && !this.player.jumpKey.isDown && !this.player.jumpCutoff && body.velocity.y < 0) {
             this.player.physics.setVelocityY(body.velocity.y * 0.35); // Adjust multiplier as needed
             this.player.jumpCutoff = true;
+        }
+
+        if (scene.time.now > this.player.wallJumpGroundCheckDelayTimer && body.blocked.down) {
+            this.player.canAirJump = false; // Lose crystal air jump on landing
+            this.player.hasAirDashed = false;
+            this.stateMachine.transition('idle');
+            return;
         }
 
         // Note: The original WallJumpState had a second, unguarded if(this.player.shouldWallSlide()) check.
@@ -1009,139 +1042,229 @@ class AirDashState extends State {
     }
 
     execute() {
-        // Optional: interrupt conditions for air dash (e.g., hitting a wall)
+        if (Phaser.Input.Keyboard.JustDown(this.player.jumpKey) && this.player.canAirJump) {
+            // Minimal cleanup directly tied to stopping the dash action for the transition.
+            // The main physics/hitbox cleanup will be handled by exit() as the state machine transitions.
+            if (this.dashTimer && this.dashTimer.getProgress() < 1) {
+                this.dashTimer.remove(); // Stop the dash duration timer.
+            }
+            // No need to set this.player.isDashing = false here; exit() will.
+            // No need to change hitboxes or physics here; exit() and JumpState.enter() will.
+            this.stateMachine.transition('jump', { isActualJump: true, isAirJump: true });
+            return;
+        }
+
         if (Phaser.Input.Keyboard.JustDown(this.player.pogoKey)) {
+            // Similar cleanup for pogo, ensuring dash timer is handled.
+            if (this.dashTimer && this.dashTimer.getProgress() < 1) {
+                this.dashTimer.remove();
+            }
+            // isDashing, hitbox, gravity, drag will be handled by exit()
             this.stateMachine.transition('airAttack');
-            return; // Prevent immediate transition back if grounded
+            return;
         }
     }
 
     exit() {
         this.player.isDashing = false;
-        if (this.player.setPlayerNormalHitbox) this.player.setPlayerNormalHitbox();
+        if (this.player.setPlayerNormalHitbox) {
+            this.player.setPlayerNormalHitbox();
+        }
         this.player.physics.body.setAllowGravity(true);
-        this.player.physics.setDragX(this.player.DRAG); // Or maybe less drag for air control after dash
+        this.player.physics.setDragX(this.player.DRAG);
 
         if (this.dashTimer && this.dashTimer.getProgress() < 1) {
             this.dashTimer.remove();
         }
-        // Always transition to an aerial animation
-        this.player.fullSprite.play('jump', true);
+        this.player.fullSprite.play('jump', true); // Ensure aerial animation
     }
 }
 
 class CrouchState extends State {
-enter({ fromState = 'idle', initialVelocityX = 0 } = {}) {
+    enter({ fromState = 'idle', initialVelocityX = 0 } = {}) {
         this.player.isCrouching = true;
         if (this.player.setPlayerCrouchHitbox) this.player.setPlayerCrouchHitbox();
         if (this.player.stopRunParticles) this.player.stopRunParticles();
         if (this.player.stopIdleParticles) this.player.stopIdleParticles();
 
+        if (this.player.physics.body.blocked.down) {
+            this.player.canAirJump = false; // Lose crystal air jump if entering crouch while grounded
+            this.player.hasAirDashed = false;
+        }
+
         this.slideFrom = fromState;
-        this.slideCompleted = false;
+        this.slideCompleted = false; // Default to false, will be set true if no slide
+        this.isActivelyCrouchWalking = false;
 
-        if (this.slideFrom === 'idle') {
-            // For the short slide from idle, we can play the crouch_idle animation
-            // as the movement is minimal, or use slide if you prefer a visual slide.
-            // Let's use crouch for the "settled" look during the short slide.
-            this.player.fullSprite.play('crouch'); // From Player Crouch-Idle 48x48.png
+        const forcedEntryNoSlide = ['idle_forced_by_ceiling', 'jump_land_forced', 'dash_land_forced', 'dash_end'];
 
-            const slideDirection = this.player.scaleX > 0 ? 1 : -1;
-            this.player.physics.setVelocityX(slideDirection * this.player.CROUCH_SLIDE_VELOCITY_FROM_IDLE);
-            this.player.physics.setDragX(this.player.DRAG);
-
-            this.slideTimer = this.player.scene.time.delayedCall(this.player.CROUCH_SLIDE_DURATION_FROM_IDLE, () => {
-                if (this.stateMachine.currentState === this) {
-                    this.player.physics.setVelocityX(0);
-                    // Animation should already be 'crouch' and looping
-                    this.slideCompleted = true;
+        if (forcedEntryNoSlide.includes(fromState)) {
+            this.slideCompleted = true;
+            this.player.physics.setVelocityX(0);
+            if (this.player.cursors.left.isDown || this.player.cursors.right.isDown) { // Check for immediate walk if forced & no slide
+                this.player.fullSprite.play('crouchWalk', true);
+                this.isActivelyCrouchWalking = true;
+            } else {
+                this.player.fullSprite.play('crouch', true);
+            }
+        } else if (this.slideFrom === 'idle') {
+            if (this.player.CROUCH_SLIDE_VELOCITY_FROM_IDLE === 0 && this.player.CROUCH_SLIDE_DURATION_FROM_IDLE === 0) {
+                this.slideCompleted = true;
+                this.player.fullSprite.play('crouch', true);
+                 if (this.player.cursors.left.isDown || this.player.cursors.right.isDown) {
+                    this.player.fullSprite.play('crouchWalk', true);
+                    this.isActivelyCrouchWalking = true;
                 }
-            });
-        } else if (this.slideFrom === 'run') {
-            this.player.fullSprite.play('crouch'); // From Player Slide 48x48.png
+            } else {
+                // Slide from idle is active
+                this.player.fullSprite.play('crouch', true);
+                const slideDirection = this.player.scaleX > 0 ? 1 : -1;
+                this.player.physics.setVelocityX(slideDirection * this.player.CROUCH_SLIDE_VELOCITY_FROM_IDLE);
+                this.player.physics.setDragX(this.player.DRAG);
+                this.slideTimer = this.player.scene.time.delayedCall(this.player.CROUCH_SLIDE_DURATION_FROM_IDLE, () => {
+                    if (this.stateMachine.currentState === this) {
+                        this.player.physics.setVelocityX(0);
+                        this.slideCompleted = true;
+                        if (!this.isActivelyCrouchWalking) { // Only switch to idle if not already walking
+                             this.player.fullSprite.play('crouch', true);
+                        }
+                    }
+                });
+            }
+        } else if (this.slideFrom === 'run' || this.slideFrom === 'run_forced_by_ceiling') {
+            this.player.fullSprite.play('slide', true);
             this.player.physics.setVelocityX(initialVelocityX * this.player.RUN_TO_CROUCH_SLIDE_DAMPING);
             this.player.physics.setDragX(this.player.CROUCH_SLIDE_DRAG);
-        } else {
-            this.player.fullSprite.play('crouch'); // Default
-            this.player.physics.setVelocityX(0);
+        } else { // Default case (e.g., direct transition by name, or unhandled fromState)
             this.slideCompleted = true;
+            this.player.physics.setVelocityX(0);
+            this.player.fullSprite.play('crouch', true);
         }
     }
 
     execute() {
-        if (this.slideFrom === 'run' && !this.slideCompleted) {
-            if (Math.abs(this.player.physics.body.velocity.x) < this.player.MIN_CROUCH_SLIDE_SPEED) {
-                this.player.physics.setVelocityX(0);
-                this.player.physics.setDragX(this.player.DRAG);
-                this.player.fullSprite.play('crouch'); // Switch to idle crouch anim
-                this.slideCompleted = true;
-            }
+
+        // Check for dropping through a semi-solid platform (TAP)
+        if (this.player.cursors.down.isDown && Phaser.Input.Keyboard.JustDown(this.player.jumpKey) && this.player.physics.body.blocked.down) {
+            // console.log("CrouchState: Player attempting to drop through platform via tap.");
+            this.player.isAttemptingDropThrough = true;
+            // Immediately transition to jump/fall state.
+            // processSemiSolidCollision will handle making the player pass through.
+            this.stateMachine.transition('jump'); // isActualJump will default to false
+            return; // Exit after transitioning
         }
 
-        // Check if player tries to stand up
-        if (!this.player.cursors.down.isDown) {
-            if (this.player.canStandUp()) { // <<< CHECK IF SPACE TO STAND
-                // Enough space, transition as normal
-                if (this.player.cursors.left.isDown || this.player.cursors.right.isDown) {
-                    this.stateMachine.transition('run');
-                } else {
-                    this.stateMachine.transition('idle');
-                }
-                return;
-            } else {
-                // Not enough space, remain crouched
-                // Ensure player is visually in crouch idle and not moving if slide was completed
-                if (this.slideCompleted) {
-                    this.player.fullSprite.play('crouch'); // Play crouch idle
-                    this.player.physics.setVelocityX(0);   // Stop horizontal movement
-                }
-                // Player stays in CrouchState implicitly
-            }
-        }   
+        // SECTION 1: Handle completion of an active slide (from run or potentially a modified idle slide)
+        if (!this.slideCompleted &&
+            (this.slideFrom === 'run' || this.slideFrom === 'run_forced_by_ceiling' ||
+             (this.slideFrom === 'idle' && (this.player.CROUCH_SLIDE_VELOCITY_FROM_IDLE !== 0 || this.player.CROUCH_SLIDE_DURATION_FROM_IDLE !== 0) && !this.slideTimer))) {
 
-        if (!this.player.cursors.down.isDown) {
-        if (this.player.canStandUp()) { // <<< CHECK IF SPACE TO STAND
-            // Enough space, transition as normal
+            if (this.slideFrom === 'run' || this.slideFrom === 'run_forced_by_ceiling') {
+                if (Math.abs(this.player.physics.body.velocity.x) < this.player.MIN_CROUCH_SLIDE_SPEED) {
+                    this.player.physics.setVelocityX(0);
+                    this.player.physics.setDragX(this.player.DRAG);
+                    this.slideCompleted = true;
+                    // console.log("CrouchState: Slide from run completed by deceleration.");
+                }
+            }
+            // Idle slide completion is handled by its timer in enter()
+        }
+
+        const isDownKeyHeld = this.player.cursors.down.isDown;
+        const canStand = this.player.canStandUp();
+        const forcedToStayCrouched = !isDownKeyHeld && !canStand; // Down key released, but cannot stand
+
+        // SECTION 2: Handle uncrouching action if possible
+        if (!isDownKeyHeld && canStand) {
+            // Player released 'down' AND can stand up: Transition out of crouch
+            // console.log("CrouchState: Can stand up, player released DOWN. Transitioning...");
+            this.slideCompleted = true; // Ensure slide is marked complete
+            this.isActivelyCrouchWalking = false;
             if (this.player.cursors.left.isDown || this.player.cursors.right.isDown) {
                 this.stateMachine.transition('run');
             } else {
                 this.stateMachine.transition('idle');
             }
             return;
+        }
+
+        // SECTION 3: Handle Crouch Movement (Walk/Idle) - Only if slide is completed
+        if (this.slideCompleted) {
+            let allowCrouchWalkInput = isDownKeyHeld || forcedToStayCrouched;
+            let performCrouchWalk = allowCrouchWalkInput && (this.player.cursors.left.isDown || this.player.cursors.right.isDown);
+
+            if (performCrouchWalk) {
+                // CROUCH WALK
+                this.isActivelyCrouchWalking = true;
+                if (this.player.cursors.left.isDown) {
+                    this.player.physics.setVelocityX(-this.player.CROUCH_WALK_SPEED);
+                    this.player.setFacingDirection(-1, true);
+                } else { // cursors.right.isDown must be true
+                    this.player.physics.setVelocityX(this.player.CROUCH_WALK_SPEED);
+                    this.player.setFacingDirection(1, true);
+                }
+                if (this.player.fullSprite.anims.currentAnim?.key !== 'crouchWalk') {
+                    this.player.fullSprite.play('crouchWalk', true);
+                }
+            } else if (isDownKeyHeld || forcedToStayCrouched) {
+                // CROUCH IDLE
+                // (Holding down with no L/R input) OR (Forced to stay crouched with no L/R input)
+                this.isActivelyCrouchWalking = false;
+                this.player.physics.setVelocityX(0);
+                if (this.player.fullSprite.anims.currentAnim?.key !== 'crouch') {
+                    this.player.fullSprite.play('crouch', true);
+                }
+            }
         } else {
-            // Not enough space, remain crouched
-            if (this.slideCompleted) {
-                this.player.fullSprite.play('crouch'); 
-                this.player.physics.setVelocityX(0);   
+            // Slide is still in progress, ensure correct slide animation
+            if (this.slideFrom === 'run' || this.slideFrom === 'run_forced_by_ceiling') {
+                if (this.player.fullSprite.anims.currentAnim?.key !== 'slide') {
+                    this.player.fullSprite.play('slide', true);
+                }
+            } else if (this.slideFrom === 'idle' && (this.player.CROUCH_SLIDE_VELOCITY_FROM_IDLE !== 0 || this.player.CROUCH_SLIDE_DURATION_FROM_IDLE !== 0)) {
+                if (this.player.fullSprite.anims.currentAnim?.key !== 'crouch') { // Idle slide uses 'crouch' anim
+                    this.player.fullSprite.play('crouch', true);
+                }
             }
         }
-    }
 
+        // SECTION 4: Jump and Dash actions
         if (Phaser.Input.Keyboard.JustDown(this.player.jumpKey)) {
-            this.stateMachine.transition('jump', { isActualJump: true });
-            return;
+            if (canStand) { // Use the 'canStand' variable
+                this.slideCompleted = true;
+                this.isActivelyCrouchWalking = false;
+                this.stateMachine.transition('jump', { isActualJump: true });
+                return;
+            } else {
+                // console.log("CrouchState: Attempted jump, but cannot stand (ceiling too low).");
+            }
         }
 
         if (Phaser.Input.Keyboard.JustDown(this.player.dashKey) && this.player.canDash) {
+            this.slideCompleted = true;
+            this.isActivelyCrouchWalking = false;
             this.stateMachine.transition('groundDash', { fromCrouch: true });
             return;
-        }
-
-        if (this.slideCompleted) {
-            this.player.physics.setVelocityX(0);
         }
     }
 
     exit() {
         this.player.isCrouching = false;
-        if (this.player.setPlayerNormalHitbox) this.player.setPlayerNormalHitbox();
-        this.player.physics.setDragX(this.player.DRAG);
-
         if (this.slideTimer) {
             this.slideTimer.remove();
+            this.slideTimer = null;
         }
-    }    
-} //add crouch dash in the dround dash state
+        this.isActivelyCrouchWalking = false;
+
+        if (this.player.setPlayerNormalHitbox) {
+            const isNextStateCrouchDash = this.stateMachine.nextStateName === 'groundDash' && this.stateMachine.nextStateParams?.fromCrouch === true;
+            if (!isNextStateCrouchDash) {
+                this.player.setPlayerNormalHitbox();
+            }
+        }
+        this.player.physics.setDragX(this.player.DRAG);
+    }
+}
 
 //class AttackState extends State {} // Might add not confirmed yet
 

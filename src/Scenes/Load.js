@@ -44,6 +44,11 @@ class Load extends Phaser.Scene {
             frameHeight: 48
         });
 
+        this.load.spritesheet("playerCrouchWalk", "playerCrouchWalk.png", {
+            frameWidth: 48,
+            frameHeight: 48
+        });
+
         this.load.audio("collectibleSound", "collectible.wav",{
             loop: false,
             volume: 0.5
@@ -130,6 +135,14 @@ class Load extends Phaser.Scene {
             frameRate: 8,
             repeat: -1
         });
+
+        this.anims.create({
+            key: 'crouchWalk',
+            frames: this.anims.generateFrameNumbers("playerCrouchWalk", { start: 0, end: 9 }),
+            frameRate: 10,
+            repeat: -1
+        });
+
          // ...and pass to the next Scene
          this.scene.start("level1Scene");
     }

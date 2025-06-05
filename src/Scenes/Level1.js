@@ -15,6 +15,9 @@ class Level1 extends Phaser.Scene {
         this.levelStartTime = 0; // Initialize start time
 
         // console.log("Level1 init: Stats reset.");
+
+        //checkpoint system
+        this.lastCheckpoint = { x: 0, y: 0 };
     }
 
     create() {
@@ -23,12 +26,14 @@ class Level1 extends Phaser.Scene {
         this.tileset = this.map.addTilesetImage("monochrome_tilemap_packed", "tilemap_tiles"); //
         this.backgroundLayer = this.map.createLayer("Background", this.tileset, 0, 0).setScale(2.0).setDepth(0); //
         this.groundLayer = this.map.createLayer("Ground&Platforms", this.tileset, 0, 0).setScale(2.0); //
+        this.semiSolidLayer = this.map.createLayer("SemiSolidPlatforms", this.tileset, 0, 0).setScale(2.0); //
+        this.semiSolidLayer.setCollisionByProperty({ isSemiSolid: true }); // Enable collision for semi-solid platforms
         this.groundLayer.setCollisionByProperty({ collides: true }); //
         this.groundLayer.setDepth(10); //
 
         // Set world bounds based on the current map
         this.physics.world.setBounds(0, 0, this.map.widthInPixels * this.groundLayer.scaleX, this.map.heightInPixels * this.groundLayer.scaleY); //
-        this.cameras.main.setBounds(0, 0, this.map.widthInPixels * this.groundLayer.scaleX, this.map.heightInPixels * this.groundLayer.scaleY); //
+        this.cameras.main.setBounds(0, 0, this.map.widthInPixels * this.groundLayer.scaleX, (this.map.heightInPixels * this.groundLayer.scaleY) - 320); //
 
         // --- Player Creation ---
         // Determine player's starting position for this level (e.g., from Tiled object layer or hardcoded)
@@ -38,18 +43,32 @@ class Level1 extends Phaser.Scene {
         // this.playerStartY = 0; // Example starting Y position (on the ground layer)
         this.player = new Player(this, this.playerStartX, this.playerStartY); // Pass `this` (the scene)
 
+        // Set initial checkpoint to player's starting position
+        this.lastCheckpoint.x = this.playerStartX;
+        this.lastCheckpoint.y = this.playerStartY;
 
         // --- Camera ---
         this.cameras.main.startFollow(this.player.physicsSprite, true, 0.1, 0.1); // Follow the player's physics sprite
+        this.cameras.main.setZoom(1.0); // Set camera zoom level
+        this.cameras.main.setRoundPixels(true); // Ensure pixel-perfect rendering
+        
 
-        // --- Level Specific Objects (Spikes, Collectibles) ---
+
+        // --- Level Specific Objects (Spikes, Collectibles, Checkpoints) ---
         this.spikeGroup = this.physics.add.staticGroup(); //
         this.collectiblesGroup = this.physics.add.group({ allowGravity: false }); //
+        this.checkpointGroup = this.physics.add.staticGroup();
+        this.refreshCrystalGroup = this.physics.add.group({ allowGravity: false });
+
 
         // --- Colliders ---
         this.physics.add.collider(this.player.physicsSprite, this.groundLayer); // Collider with player's physics body
         this.physics.add.overlap(this.player.attackHitbox, this.spikeGroup, this.handlePogoHit, null, this); // handle pogo collision checks within the level scene.
         this.physics.add.collider(this.player.physicsSprite, this.spikeGroup, this.handlePlayerSpikeCollision, null, this); // Player damage collision (player body vs spikes)
+        this.physics.add.collider(this.player.physicsSprite, this.semiSolidLayer, null, this.processSemiSolidCollision, this);
+        this.physics.add.overlap(this.player.physicsSprite, this.checkpointGroup, this.activateCheckpoint, null, this);
+        this.physics.add.overlap(this.player.physicsSprite, this.refreshCrystalGroup, this.handleRefreshCrystalOverlap, null, this);
+
 
         // Record level start time *after* main setup and player creation
         this.levelStartTime = this.time.now; // Phaser's scene time in milliseconds
@@ -148,6 +167,8 @@ class Level1 extends Phaser.Scene {
                         .setVisible(false); // Make it invisible or use a visual cue
                     endZone.body.setAllowGravity(false);
                     endZone.setOrigin(0.5, 1.5); // Center the end zone
+                    endZone.setScale(1);
+                    endZone.setOffset(0, -scaledHeight - 140 ); // Adjust offset to match the Tiled object
                     this.physics.add.overlap(this.player.physicsSprite, endZone, () => { //
                         const levelEndTime = this.time.now; // Get current time
                         const timeTakenMs = levelEndTime - this.levelStartTime; // Calculate duration
@@ -164,7 +185,39 @@ class Level1 extends Phaser.Scene {
                             timeTakenMs: timeTakenMs
                         });
                     }, null, this); //
+                } 
+                // --- Checkpoint Object ---
+                else if (obj.name === "Checkpoint") {
+                    // Assuming checkpoint origin is top-left in Tiled
+                    // We'll use the object's (x,y) as the respawn point.
+                    // You might want to use a visual sprite, or just an invisible zone.
+                    // For an invisible zone:
+                    let checkpointZone = this.checkpointGroup.create(scaledX, scaledY, null) // No texture
+                        .setOrigin(0, 0) // Top-left origin for the zone
+                        .setVisible(false) // Invisible
+                        .setPushable(false)
+                        .setScale(layerScale); // Not pushable
+                    checkpointZone.body.setSize(scaledWidth, scaledHeight); // Set its physics size
+                    checkpointZone.body.setOffset(16, -50); // No offset, matches the Tiled object
+                    // Store its intended respawn position (which is its top-left corner)
+                    // The player's respawn method will place the player's physicsSprite center there.
+                    // If you want the player to stand ON TOP of a checkpoint visual,
+                    // you'd adjust the Y coordinate based on player height and checkpoint visual.
+                    // For simplicity, we'll use the checkpoint's (scaledX, scaledY) as the direct respawn point.
+                    checkpointZone.setData('respawnX', scaledX);
+                    checkpointZone.setData('respawnY', scaledY);
+
+                    // Optional: If you want a visual cue for the checkpoint
+                    // let checkpointSprite = this.checkpointGroup.create(scaledX + scaledWidth / 2, scaledY + scaledHeight / 2, 'yourCheckpointSpriteKey');
+                    // checkpointSprite.setData('respawnX', scaledX + scaledWidth / 2); // Center respawn
+                    // checkpointSprite.setData('respawnY', scaledY + scaledHeight);   // Bottom-center respawn
+                    // checkpointSprite.refreshBody(); // if you setSize after creation
                 }
+                else if (obj.name === "RefreshCrystal") {
+                    let crystalCenterX = scaledX + (scaledWidth / 2); let crystalCenterY = scaledY + (scaledHeight / 2);
+                    let crystal = this.refreshCrystalGroup.create(crystalCenterX, crystalCenterY, 'tilemap_tiles', 22); 
+                    crystal.setOrigin(0.5, 0.5).setScale(layerScale); 
+                    crystal.setData('respawnTime', 2000);                }
             });
         }
     }
@@ -177,6 +230,27 @@ class Level1 extends Phaser.Scene {
             const currentVisibility = this.physics.world.debugGraphic.visible;
             this.physics.world.debugGraphic.setVisible(!currentVisibility);
             console.log(`Physics Debug Mode: ${!currentVisibility ? 'ON' : 'OFF'}`);
+        }
+    }
+
+    activateCheckpoint(playerPhysicsSprite, checkpointSprite) {
+        const newCheckpointX = checkpointSprite.getData('respawnX');
+        const newCheckpointY = checkpointSprite.getData('respawnY');
+
+        // Only update and provide feedback if it's a new checkpoint
+        if (this.lastCheckpoint.x !== newCheckpointX || this.lastCheckpoint.y !== newCheckpointY) {
+            this.lastCheckpoint.x = newCheckpointX;
+            this.lastCheckpoint.y = newCheckpointY;
+
+            console.log(`Checkpoint activated at: (${this.lastCheckpoint.x}, ${this.lastCheckpoint.y})`);
+
+            // Optional: Provide feedback
+            // this.sound.play('checkpointSound'); // Add a sound
+            checkpointSprite.setTint(0x00ff00); // Tint it green
+            // To make it one-time activatable, you could disable its body:
+            // checkpointSprite.disableBody(true, false); // Keeps it visible but non-interactive
+            // Or destroy it if you don't need it anymore:
+            // checkpointSprite.destroy();
         }
     }
 
@@ -196,7 +270,7 @@ class Level1 extends Phaser.Scene {
         // You could add a small delay, screen flash, or sound effect here.
         // e.g., this.cameras.main.flash(250, 255, 0, 0);
         //       this.sound.play('playerDeathSound');
-        playerInstance.respawn(this.playerStartX, this.playerStartY);
+        playerInstance.respawn(this.lastCheckpoint.x, this.lastCheckpoint.y);
     }
 
     handlePogoHit(attackHitbox, target) { // attackHitbox is player's, target is spike
@@ -218,6 +292,37 @@ class Level1 extends Phaser.Scene {
         }
     }
 
+    handleRefreshCrystalOverlap(playerPhysicsSprite, crystal) {
+        const player = this.player; 
+
+        player.canDash = true;        // Refresh dash cooldown
+        player.hasAirDashed = false;  // Allow another air dash
+        player.canAirJump = true;     // Grant the crystal-powered air jump
+
+        console.log("Player touched RefreshCrystal: Dash & Air Dash refreshed! Crystal Air Jump ENABLED!");
+        
+        // ... (crystal despawn and respawn logic remains the same as your previous implementation) ...
+        crystal.disableBody(true, true); 
+        const respawnTime = crystal.getData('respawnTime');
+        this.time.delayedCall(respawnTime, () => {
+            if (crystal && crystal.scene) { 
+                // console.log(`Attempting to respawn crystal: ${crystal.name}`);
+                
+                // enableBody will set the crystal to active and visible if the last two arguments are true.
+                // It also re-enables its physics body and places it at the specified x, y.
+                crystal.enableBody(true, crystal.x, crystal.y, true, true);
+                
+                // If your crystals are Arcade Sprites and should not fall with gravity:
+                if (crystal.body && typeof crystal.body.setAllowGravity === 'function') {
+                    crystal.body.setAllowGravity(false);
+                }
+                // console.log(`Crystal ${crystal.name} respawned. Active: ${crystal.active}, Visible: ${crystal.visible}`);
+            } else {
+                // console.warn("RefreshCrystal: Could not respawn. Crystal object no longer valid or removed from scene.");
+            }
+        }, [], this);
+    }
+
     handleCollectItem(playerPhysicsSprite, collectibleObject) { //
         console.log("Collectible picked up!"); //
         collectibleObject.disableBody(true, true); //
@@ -227,4 +332,74 @@ class Level1 extends Phaser.Scene {
 
 
     }
+
+
+    processSemiSolidCollision(playerSprite, tile) {
+        const player = this.player; // Reference to your Player class instance
+        const playerBody = playerSprite.body;
+        const tilemapLayer = tile.tilemapLayer; // The TilemapLayer the tile belongs to
+
+        // --- 1. PRIORITIZED: Holding Down + Jump to fall through ---
+        // If player is actively holding the key combination, always ignore semi-solid platforms.
+        if (player.isHoldingFallThroughKeys) {
+            // console.log("ProcessCollision: Player actively holding Down+Jump. IGNORING.");
+            return false; // Ignore collision
+        }
+
+        // --- 2. Timed Drop-Through (e.g., from a "tap") ---
+        // If player is in the "dropping through" state (usually after a tap-to-drop).
+        if (player.isDroppingThrough) {
+            if (this.time.now < player.timeToStopDropping) {
+                // console.log("ProcessCollision: Player in timed 'isDroppingThrough' state. IGNORING.");
+                return false; // Continue ignoring collision while timer is active
+            } else {
+                player.isDroppingThrough = false; // Timer expired, reset flag
+                // console.log("ProcessCollision: Timed 'isDroppingThrough' state ENDED.");
+            }
+        }
+
+        // --- 3. Initiating a "Tap-to-Drop" ---
+        // 'isAttemptingDropThrough' is set true by PlayerStates for one frame on Down + JustDown(Jump).
+        const recentlyBlockedDown = (playerBody.blocked.down ||
+                                    (this.time.now - player.timeLastBlockedDown < player.DROP_BLOCKED_DOWN_GRACE_PERIOD));
+
+        if (player.isAttemptingDropThrough && recentlyBlockedDown) {
+            const tileTopWorldY = tile.pixelY * tilemapLayer.scaleY;
+            // Ensure player is reasonably "on top" of this specific platform to drop from it.
+            const onThisTileThreshold = 4 * tilemapLayer.scaleY; // Adjust tolerance as needed
+
+            if (Math.abs(playerBody.bottom - tileTopWorldY) < onThisTileThreshold) {
+                // console.log("%cProcessCollision: Tap-to-Drop INITIATED.", "color: green; font-weight: bold;");
+                player.isDroppingThrough = true;
+                player.timeToStopDropping = this.time.now + 250; // Duration (ms) to ignore platforms after a tap
+                // player.isAttemptingDropThrough is reset in Player.update() for the next frame
+                playerBody.y += 2; // A small nudge can help disengage from the platform
+                return false;      // Ignore collision to start dropping
+            }
+        }
+
+        // --- 4. Standard Semi-Solid Behavior (Land on Top, Pass Through From Below/Side) ---
+    // This applies only if not holding fall-through keys and not in an active timed drop.
+    const tileTopWorldY = tile.pixelY * tilemapLayer.scaleY; //
+    // Tolerance for landing: player's feet must be within this range above or at the platform's top.
+    const landingTolerance = 4 * tilemapLayer.scaleY; //
+
+    if (playerBody.velocity.y >= 0 && // Player is moving downwards or stationary (gravity will act)
+        playerBody.bottom <= tileTopWorldY + landingTolerance) { // Player's feet are at or slightly above the platform top
+
+        // Additional check to prevent "snapping up" when walking into the side of a platform.
+        // Ensures player was above the platform in the previous frame to confirm a downward landing.
+        const prevFramePlayerBottom = playerBody.prev.y + playerBody.height; // <<< CORRECTED LINE
+
+        if (prevFramePlayerBottom <= tileTopWorldY) { //
+            // console.log("ProcessCollision: Standard LANDING on semi-solid platform.");
+            return true; // Allow collision (player lands on the platform)
+        }
+    }
+
+    // console.log("ProcessCollision: Default PASS-THROUGH (from below/side or not meeting landing criteria).");
+    return false; // Otherwise, ignore collision (player passes through)
+    }
+
+    
 }

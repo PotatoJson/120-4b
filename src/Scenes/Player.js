@@ -15,6 +15,7 @@ class Player extends Phaser.GameObjects.Container {
         this.physics = this.physicsSprite;
 
         // --- Player Constants (from Platformer.init and player object) ---
+        this.playerScale = 2.0; //
         this.MAX_SPEED = 350; //
         this.DRAG = 1000; //
         this.JUMP_VELOCITY = -700 //
@@ -33,12 +34,15 @@ class Player extends Phaser.GameObjects.Container {
         this.COYOTE_TIME_DURATION = 100; //
         this.JUMP_BUFFER_DURATION_CONST = 1000; //
         this.DASH_BUFFER_DURATION_CONST = 100; //
-        this.playerScale = 2.0; //
         this.CROUCH_SLIDE_VELOCITY_FROM_IDLE = 0; // pixels/sec for the short slide from idle
         this.CROUCH_SLIDE_DURATION_FROM_IDLE = 0; // milliseconds for the short slide timer
+        this.CROUCH_WALK_SPEED = 175    // Speed when walking while crouching
         this.RUN_TO_CROUCH_SLIDE_DAMPING = 0.8;    // Factor to reduce running speed on crouch entry (e.g., 70%)
         this.CROUCH_SLIDE_DRAG = 300;             // Higher drag to slow down the slide from run
         this.MIN_CROUCH_SLIDE_SPEED = 150;          // Speed below which the run-to-crouch slide stops
+
+        this.timeLastBlockedDown = 0;
+        this.DROP_BLOCKED_DOWN_GRACE_PERIOD = 50;
 
         // --- Player Sprites (visual components) ---
         // These are added to this container, so their positions are relative to the container's origin (0,0)
@@ -65,6 +69,7 @@ class Player extends Phaser.GameObjects.Container {
         this.isDashing = false; //
         this.canDash = true; //
         this.hasAirDashed = false; //
+        this.canAirJump = false; //
         this.isSliding = false; //
         this.isCrouching = false; //
         this.canWallJump = false; //
@@ -83,6 +88,11 @@ class Player extends Phaser.GameObjects.Container {
         this.JUMP_BUFFER_DURATION = this.JUMP_BUFFER_DURATION_CONST; //
         this.DASH_BUFFER_DURATION = this.DASH_BUFFER_DURATION_CONST; //
         this.wasAirborne = false; //
+        this.isHoldingFallThroughKeys = false;
+        this.isAttemptingDropThrough = false; // Flag set by input to initiate a drop
+        this.isDroppingThrough = false;       // Flag to indicate player is currently phasing down
+        this.timeToStopDropping = 0;          // Timer for how long to ignore semi-solid platforms
+
 
         // --- Input Handling ---
         this.cursors = scene.input.keyboard.createCursorKeys(); //
@@ -288,6 +298,10 @@ class Player extends Phaser.GameObjects.Container {
         this.jumpBufferTimer = 0; //
         this.dashBufferTimer = 0; //
         this.wasAirborne = true; // Treat as if just became airborne to allow landing particles correctly next frame
+        this.isAttemptingDropThrough = false;
+        this.isDroppingThrough = false;
+        this.timeToStopDropping = 0;
+        this.canAirJump = false;
 
         // Stop any active particle emitters that should not persist
         if (this.stopRunParticles) this.stopRunParticles(); //
@@ -327,7 +341,6 @@ class Player extends Phaser.GameObjects.Container {
     }
 
 
-    // In Player.js
     canStandUp() {
         if (!this.scene || !this.physics || !this.normalBodySize || !this.crouchBodySize || !this.scene.groundLayer) {
             console.warn("Player.canStandUp: Missing components. Defaulting to allow standing.");
@@ -402,45 +415,50 @@ class Player extends Phaser.GameObjects.Container {
         }
     }
 
-    // This update method should be called from the Scene's update loop
     update(time, delta) {
-        const onGround = this.physicsSprite.body.blocked.down; //
+        this.isAttemptingDropThrough = false; // Reset before states can set it for the current frame.
+
+        const onGround = this.physicsSprite.body.blocked.down;
+        if (onGround) {
+            this.timeLastBlockedDown = time; //
+        }
+
+        // Update the flag for holding down+jump keys
+        const holdingDown = this.cursors.down.isDown;
+        const holdingJump = this.jumpKey.isDown; // Check if jump key is HELD
+        this.isHoldingFallThroughKeys = holdingDown && holdingJump; //
+
 
         // Landing particles logic
-        if (onGround && this.wasAirborne) { //
-            this.emitLandingParticles(); //
+        if (onGround && this.wasAirborne) {
+            this.emitLandingParticles();
         }
-        this.wasAirborne = !onGround; //
+        this.wasAirborne = !onGround;
 
         // Update positions for continuous emitters
-        if (this.runParticlesEmitter && this.runParticlesEmitter.emitting) { //
-            const dir = this.scaleX > 0 ? 1 : -1; // Use container's scaleX for direction
-            const emitterX = this.physicsSprite.x - (dir * this.physicsSprite.displayWidth * 0.25); // Adjusted from original, test this offset
-            const emitterY = this.physicsSprite.body.bottom; //
-            this.runParticlesEmitter.setPosition(emitterX, emitterY); //
+        if (this.runParticlesEmitter && this.runParticlesEmitter.emitting) {
+            const dir = this.scaleX > 0 ? 1 : -1;
+            const emitterX = this.physicsSprite.x - (dir * this.physicsSprite.displayWidth * 0.25);
+            const emitterY = this.physicsSprite.body.bottom;
+            this.runParticlesEmitter.setPosition(emitterX, emitterY);
         }
-        if (this.idleParticlesEmitter && this.idleParticlesEmitter.emitting) { //
-            const emitterY = this.physicsSprite.body.bottom - 2; //
-            this.idleParticlesEmitter.setPosition(this.physicsSprite.x, emitterY); //
+        if (this.idleParticlesEmitter && this.idleParticlesEmitter.emitting) {
+            const emitterY = this.physicsSprite.body.bottom - 2;
+            this.idleParticlesEmitter.setPosition(this.physicsSprite.x, emitterY);
         }
 
         // Step the state machine
-        this.stateMachine.step(time, delta); // Pass time and delta if your states use them
+        this.stateMachine.step(time, delta);
 
         // Sync container's position with the physics sprite
-        this.x = this.physicsSprite.x; //
-        this.y = this.physicsSprite.y; //
+        this.x = this.physicsSprite.x;
+        this.y = this.physicsSprite.y;
 
-        // Update attack hitbox position relative to the player
-        // This is a simple example; you might want more complex logic
-        // based on animation frames or specific states.
+        // Update attack hitbox position
         const facingDir = this.scaleX > 0 ? 1 : -1;
-        // Position relative to the container's center, then adjust.
-        // Since sprites inside container are origin 0.5,1, their "center" is roughly player's feet x, and middle y.
-        // Physics sprite x,y is its center.
         this.attackHitbox.setPosition(
-            this.physicsSprite.x + (facingDir * (this.physicsSprite.displayWidth / 2 + this.attackHitbox.width / 4)), // Rough positioning
-            this.physicsSprite.y - (this.physicsSprite.displayHeight / 4) // Rough positioning
+            this.physicsSprite.x + (facingDir * (this.physicsSprite.displayWidth / 2 + this.attackHitbox.width / 4)),
+            this.physicsSprite.y - (this.physicsSprite.displayHeight / 4)
         );
     }
 
