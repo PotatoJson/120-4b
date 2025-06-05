@@ -38,7 +38,7 @@ class Level1 extends Phaser.Scene {
         // --- Player Creation ---
         // Determine player's starting position for this level (e.g., from Tiled object layer or hardcoded)
         this.playerStartX = 20;
-        this.playerStartY = 1850; // Assuming player starts on the ground layer
+        this.playerStartY = 1835; // Assuming player starts on the ground layer
         // this.playerStartX = 1600; // Example starting X position
         // this.playerStartY = 0; // Example starting Y position (on the ground layer)
         this.player = new Player(this, this.playerStartX, this.playerStartY); // Pass `this` (the scene)
