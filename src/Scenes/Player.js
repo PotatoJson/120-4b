@@ -278,7 +278,7 @@ class Player extends Phaser.GameObjects.Container {
 
     respawn(x, y) {
         this.physicsSprite.setVelocity(0, 0);
-        this.physicsSprite.setPosition(x, y);
+        this.physicsSprite.setPosition(x, y); // Adjust y to match the sprite's origin offset
 
         // Reset core state variables
         this.isDashing = false; //
@@ -447,6 +447,10 @@ class Player extends Phaser.GameObjects.Container {
             this.idleParticlesEmitter.setPosition(this.physicsSprite.x, emitterY);
         }
 
+        // if (Phaser.Input.Keyboard.JustDown(this.jumpKey)) {
+        //     console.log(`Time: ${time.toFixed(0)}: JumpKey JustDown. CanAirJump: ${this.canAirJump}, CurrentState: ${this.stateMachine.currentState.constructor.name}`);
+        // }
+        
         // Step the state machine
         this.stateMachine.step(time, delta);
 

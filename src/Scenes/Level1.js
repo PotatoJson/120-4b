@@ -11,7 +11,7 @@ class Level1 extends Phaser.Scene {
         // Initialize stats for the current level attempt
         this.playerDeaths = 0;
         this.collectiblesGathered = 0;
-        this.totalCollectiblesInLevel = 3;
+        this.totalCollectiblesInLevel = 4;
         this.levelStartTime = 0; // Initialize start time
 
         // console.log("Level1 init: Stats reset.");
@@ -22,7 +22,7 @@ class Level1 extends Phaser.Scene {
 
     create() {
         // --- Level Specific Setup ---
-        this.map = this.add.tilemap("playground", 16, 16, 100, 60); // Level 1 map
+        this.map = this.add.tilemap("level1", 16, 16, 100, 60); // Level 1 map
         this.tileset = this.map.addTilesetImage("monochrome_tilemap_packed", "tilemap_tiles"); //
         this.backgroundLayer = this.map.createLayer("Background", this.tileset, 0, 0).setScale(2.0).setDepth(0); //
         this.groundLayer = this.map.createLayer("Ground&Platforms", this.tileset, 0, 0).setScale(2.0); //
@@ -168,7 +168,7 @@ class Level1 extends Phaser.Scene {
                     endZone.body.setAllowGravity(false);
                     endZone.setOrigin(0.5, 1.5); // Center the end zone
                     endZone.setScale(1);
-                    endZone.setOffset(0, -scaledHeight - 140 ); // Adjust offset to match the Tiled object
+                    endZone.setOffset(0, -scaledHeight + 80); // Adjust offset to match the Tiled object
                     this.physics.add.overlap(this.player.physicsSprite, endZone, () => { //
                         const levelEndTime = this.time.now; // Get current time
                         const timeTakenMs = levelEndTime - this.levelStartTime; // Calculate duration
@@ -188,36 +188,25 @@ class Level1 extends Phaser.Scene {
                 } 
                 // --- Checkpoint Object ---
                 else if (obj.name === "Checkpoint") {
-                    // Assuming checkpoint origin is top-left in Tiled
-                    // We'll use the object's (x,y) as the respawn point.
-                    // You might want to use a visual sprite, or just an invisible zone.
-                    // For an invisible zone:
                     let checkpointZone = this.checkpointGroup.create(scaledX, scaledY, null) // No texture
                         .setOrigin(0, 0) // Top-left origin for the zone
                         .setVisible(false) // Invisible
-                        .setPushable(false)
-                        .setScale(layerScale); // Not pushable
+                        .setPushable(false) // Not pushable
+                        .setScale(layerScale); 
                     checkpointZone.body.setSize(scaledWidth, scaledHeight); // Set its physics size
-                    checkpointZone.body.setOffset(16, -50); // No offset, matches the Tiled object
-                    // Store its intended respawn position (which is its top-left corner)
-                    // The player's respawn method will place the player's physicsSprite center there.
-                    // If you want the player to stand ON TOP of a checkpoint visual,
-                    // you'd adjust the Y coordinate based on player height and checkpoint visual.
-                    // For simplicity, we'll use the checkpoint's (scaledX, scaledY) as the direct respawn point.
+                    checkpointZone.body.setOffset(16, 16); // No offset, matches the Tiled object
+                    
+                    // Store respawn coordinates in the checkpoint zone's data
                     checkpointZone.setData('respawnX', scaledX);
                     checkpointZone.setData('respawnY', scaledY);
 
-                    // Optional: If you want a visual cue for the checkpoint
-                    // let checkpointSprite = this.checkpointGroup.create(scaledX + scaledWidth / 2, scaledY + scaledHeight / 2, 'yourCheckpointSpriteKey');
-                    // checkpointSprite.setData('respawnX', scaledX + scaledWidth / 2); // Center respawn
-                    // checkpointSprite.setData('respawnY', scaledY + scaledHeight);   // Bottom-center respawn
-                    // checkpointSprite.refreshBody(); // if you setSize after creation
                 }
+
                 else if (obj.name === "RefreshCrystal") {
                     let crystalCenterX = scaledX + (scaledWidth / 2); let crystalCenterY = scaledY + (scaledHeight / 2);
-                    let crystal = this.refreshCrystalGroup.create(crystalCenterX, crystalCenterY, 'tilemap_tiles', 22); 
-                    crystal.setOrigin(0.5, 0.5).setScale(layerScale); 
-                    crystal.setData('respawnTime', 2000);                }
+                    let crystalActive = this.refreshCrystalGroup.create(crystalCenterX, crystalCenterY, 'tilemap_tiles', 22);
+                    crystalActive.setOrigin(0.5, 0.5).setScale(layerScale); 
+                    crystalActive.setData('respawnTime', 2000);                }
             });
         }
     }
@@ -292,7 +281,7 @@ class Level1 extends Phaser.Scene {
         }
     }
 
-    handleRefreshCrystalOverlap(playerPhysicsSprite, crystal) {
+    handleRefreshCrystalOverlap(playerPhysicsSprite, crystalActive) {
         const player = this.player; 
 
         player.canDash = true;        // Refresh dash cooldown
@@ -301,20 +290,19 @@ class Level1 extends Phaser.Scene {
 
         console.log("Player touched RefreshCrystal: Dash & Air Dash refreshed! Crystal Air Jump ENABLED!");
         
-        // ... (crystal despawn and respawn logic remains the same as your previous implementation) ...
-        crystal.disableBody(true, true); 
-        const respawnTime = crystal.getData('respawnTime');
+        crystalActive.disableBody(true, true); 
+        const respawnTime = crystalActive.getData('respawnTime');
         this.time.delayedCall(respawnTime, () => {
-            if (crystal && crystal.scene) { 
+            if (crystalActive && crystalActive.scene) { 
                 // console.log(`Attempting to respawn crystal: ${crystal.name}`);
                 
                 // enableBody will set the crystal to active and visible if the last two arguments are true.
                 // It also re-enables its physics body and places it at the specified x, y.
-                crystal.enableBody(true, crystal.x, crystal.y, true, true);
+                crystalActive.enableBody(true, crystalActive.x, crystalActive.y, true, true);
                 
                 // If your crystals are Arcade Sprites and should not fall with gravity:
-                if (crystal.body && typeof crystal.body.setAllowGravity === 'function') {
-                    crystal.body.setAllowGravity(false);
+                if (crystalActive.body && typeof crystalActive.body.setAllowGravity === 'function') {
+                    crystalActive.body.setAllowGravity(false);
                 }
                 // console.log(`Crystal ${crystal.name} respawned. Active: ${crystal.active}, Visible: ${crystal.visible}`);
             } else {

@@ -35,9 +35,9 @@ class SummaryScene extends Phaser.Scene {
         const statsStyle = { fontSize: '40px', fill: '#ffffff', fontFamily: 'Arial, sans-serif' };
         const buttonStyle = { fontSize: '36px', fill: '#87ceeb', backgroundColor: '#333333', padding: { x: 25, y: 15 }, fontFamily: 'Arial, sans-serif' }; // Sky blue text
 
-        this.add.text(centerX, centerY - 200, 'Thanks for Playing!', titleStyle).setOrigin(0.5);
+        this.add.text(centerX, centerY - 200, 'Level Complete', titleStyle).setOrigin(0.5);
 
-        this.add.text(centerX, centerY - 110, `Final Stats`, { fontSize: '44px', fill: '#cccccc', fontFamily: 'Arial, sans-serif' }).setOrigin(0.5);
+        this.add.text(centerX, centerY - 110, `Level Stats`, { fontSize: '44px', fill: '#cccccc', fontFamily: 'Arial, sans-serif' }).setOrigin(0.5);
         this.add.text(centerX, centerY - 60, `Time: ${this.formatTime(this.stats.timeTakenMs)}`, statsStyle).setOrigin(0.5);
         this.add.text(centerX, centerY - 10, `Deaths: ${this.stats.deaths}`, statsStyle).setOrigin(0.5); //
         this.add.text(centerX, centerY + 40, `Collectibles: ${this.stats.collectibles} / ${this.stats.totalCollectibles}`, statsStyle).setOrigin(0.5); //

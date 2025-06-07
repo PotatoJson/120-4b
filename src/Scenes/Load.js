@@ -58,11 +58,10 @@ class Load extends Phaser.Scene {
         this.load.spritesheet("tilemap_tiles", "monochrome_tilemap_packed.png", {
             frameWidth: 16,
             frameHeight: 16
-            // You can also add 'endFrame: 399' if you want to be explicit,
-            // as your Tiled map indicates a tilecount of 400 (frames 0-399).
-            // Phaser usually figures this out if margin and spacing are 0.
-        });                         // Packed tilemap
-        this.load.tilemapTiledJSON("playground", "1bit_playground.tmj");   // Tilemap in JSON
+        });                         
+        
+        // Packed tilemap
+        this.load.tilemapTiledJSON("level1", "level1.tmj");   // Tilemap in JSON
     }
 
     create() {
