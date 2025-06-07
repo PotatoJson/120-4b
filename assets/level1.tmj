@@ -427,24 +427,6 @@
                  "y":352
                 }, 
                 {
-                 "gid":23,
-                 "height":16,
-                 "id":127,
-                 "name":"RefreshCrystal",
-                 "properties":[
-                        {
-                         "name":"respawnTime",
-                         "type":"int",
-                         "value":5000
-                        }],
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":16,
-                 "x":1344,
-                 "y":672
-                }, 
-                {
                  "height":32,
                  "id":130,
                  "name":"Spikes",
@@ -544,7 +526,7 @@
                  "type":"",
                  "visible":true,
                  "width":16,
-                 "x":64,
+                 "x":32,
                  "y":464
                 }, 
                 {

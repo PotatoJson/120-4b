@@ -158,6 +158,7 @@ class Level1 extends Phaser.Scene {
                     let collectibleCenterY = scaledY + (scaledHeight / 2); //
                     let collectible = this.collectiblesGroup.create(collectibleCenterX, collectibleCenterY, 'tilemap_tiles', 82); //
                     collectible.setOrigin(0.5, 1.5).setScale(layerScale); //
+                    collectible.setTint(0x13D4D4)
                     this.physics.add.overlap(this.player.physicsSprite, collectible, this.handleCollectItem, null, this); // Changed to player.physicsSprite
                 }
                  // Add an object for "LevelEnd" or similar
