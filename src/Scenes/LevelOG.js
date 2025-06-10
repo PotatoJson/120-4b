@@ -14,7 +14,7 @@ class LevelOG extends Phaser.Scene {
         // Initialize stats for the current level attempt
         this.playerDeaths = 0;
         this.collectiblesGathered = 0;
-        this.totalCollectiblesInLevel = 4;
+        this.totalCollectiblesInLevel = 3;
         
 
         // console.log("Level1 init: Stats reset.");
