@@ -58,10 +58,17 @@ class Load extends Phaser.Scene {
         this.load.spritesheet("tilemap_tiles", "monochrome_tilemap_packed.png", {
             frameWidth: 16,
             frameHeight: 16
-        });                         
+        });
+        this.load.spritesheet("tilemap_tiles_transparent", "monochrome_tilemap_transparent_packed.png", {
+            frameWidth: 16,
+            frameHeight: 16
+        });                      
         
         // Packed tilemap
         this.load.tilemapTiledJSON("level1", "level1.tmj");   // Tilemap in JSON
+        this.load.tilemapTiledJSON ("level2", "level2.tmj");
+        this.load.tilemapTiledJSON ("levelTutorial", "levelTutorial.tmj");
+        this.load.tilemapTiledJSON("levelOG", "1bit_playground.tmj");
     }
 
     create() {
@@ -143,7 +150,7 @@ class Load extends Phaser.Scene {
         });
 
          // ...and pass to the next Scene
-         this.scene.start("level1Scene");
+         this.scene.start("mainMenuScene");
     }
 
     // Never get here since a new scene is started in create()

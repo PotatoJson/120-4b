@@ -1,14 +1,3 @@
-// Jim Whitehead
-// Created: 4/14/2024
-// Phaser: 3.70.0
-//
-// Cubey
-//
-// An example of putting sprites on the screen using Phaser
-// 
-// Art assets from Kenny Assets "Shape Characters" set:
-// https://kenney.nl/assets/shape-characters
-
 // debug with extreme prejudice
 "use strict"
 
@@ -39,7 +28,7 @@ let config = {
         target: 60, // Set the target frame rate to 60 FPS
         forceSetTimeOut: true
     },
-    scene: [Load, Level1, SummaryScene]
+    scene: [Load, MainMenuScene, LevelSelectScene, LevelTutorial, LevelOG, Level1, Level2, SummaryScene, CreditsScene]
 }
 
 var cursors;

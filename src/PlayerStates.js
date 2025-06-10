@@ -279,7 +279,7 @@ class JumpState extends State {
                 this.player.physics.setVelocityY(this.player.JUMP_VELOCITY);
                 this.player.jumpBeingHeld = true; 
                 this.player.jumpCutoff = false;
-                this.player.hasAirDashed = false; // Crystal air jump also refreshes air dash
+                // this.player.hasAirDashed = false; // Crystal air jump also refreshes air dash
                 this.player.canAirJump = false;   // Consume the crystal air jump ability
                 if (this.player.emitJumpParticles) this.player.emitJumpParticles();
             } else { // This is a ground jump

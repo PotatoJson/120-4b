@@ -1,12 +1,12 @@
-class Level1 extends Phaser.Scene {
+class Level2 extends Phaser.Scene {
     constructor() {
-        super("level1Scene"); // Unique key for this level
+        super("level2Scene"); // Unique key for this level
     }
 
     init(data) {
         
         this.startContext = data || {}; 
-
+        
         // Global physics settings can stay here or move to a game config file
         this.physics.world.gravity.y = 1500;
         this.physics.world.TILE_BIAS = 32; //
@@ -14,10 +14,9 @@ class Level1 extends Phaser.Scene {
         // Initialize stats for the current level attempt
         this.playerDeaths = 0;
         this.collectiblesGathered = 0;
-        this.totalCollectiblesInLevel = 4;
-        
+        this.totalCollectiblesInLevel = 2;
 
-        // console.log("Level1 init: Stats reset.");
+        // console.log("Level2 init: Stats reset.");
 
         //checkpoint system
         this.lastCheckpoint = { x: 0, y: 0 };
@@ -25,8 +24,9 @@ class Level1 extends Phaser.Scene {
 
     create() {
         // --- Level Specific Setup ---
-        this.map = this.add.tilemap("level1", 16, 16, 100, 60); // Level 1 map
+        this.map = this.add.tilemap("level2", 16, 16, 100, 45); // Level 1 map
         this.tileset = this.map.addTilesetImage("monochrome_tilemap_packed", "tilemap_tiles"); //
+        this.tileset2 = this.map.addTilesetImage("monochrome_tilemap_transparent_packed", "tilemap_tiles_transparent");
         this.backgroundLayer = this.map.createLayer("Background", this.tileset, 0, 0).setScale(2.0).setDepth(0); //
         this.groundLayer = this.map.createLayer("Ground&Platforms", this.tileset, 0, 0).setScale(2.0); //
         this.semiSolidLayer = this.map.createLayer("SemiSolidPlatforms", this.tileset, 0, 0).setScale(2.0); //
@@ -52,17 +52,17 @@ class Level1 extends Phaser.Scene {
         this.timerText = this.add.text(20, 20, 'Time: 0.00', timerStyle)
             .setScrollFactor(0)
             .setDepth(100); // Ensure it's on top of other elements
-        
+
         // Set world bounds based on the current map
         this.physics.world.setBounds(0, 0, this.map.widthInPixels * this.groundLayer.scaleX, this.map.heightInPixels * this.groundLayer.scaleY); //
-        this.cameras.main.setBounds(0, 0, this.map.widthInPixels * this.groundLayer.scaleX, (this.map.heightInPixels * this.groundLayer.scaleY) - 320); //
+        this.cameras.main.setBounds(0, 0, this.map.widthInPixels * this.groundLayer.scaleX, (this.map.heightInPixels * this.groundLayer.scaleY)); //
 
         // --- Player Creation ---
         // Determine player's starting position for this level (e.g., from Tiled object layer or hardcoded)
-        this.playerStartX = 20;
-        this.playerStartY = 1835; // Assuming player starts on the ground layer
-        // this.playerStartX = 1600; // Example starting X position
-        // this.playerStartY = 0; // Example starting Y position (on the ground layer)
+        this.playerStartX = 160;
+        this.playerStartY = 120; // Assuming player starts on the ground layer
+        // this.playerStartX = 50; // Example starting X position
+        // this.playerStartY = 900; // Example starting Y position (on the ground layer)
         this.player = new Player(this, this.playerStartX, this.playerStartY); // Pass `this` (the scene)
 
         // Set initial checkpoint to player's starting position
@@ -103,7 +103,6 @@ class Level1 extends Phaser.Scene {
         // key for reload
         this.reloadKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
 
-
         // Enable physics debug drawing capabilities for the world.
         // If your game config's arcade: { debug: true } is set, this line might reinforce it.
         // If arcade: { debug: false } or not set, this ensures the debug system is active.
@@ -111,66 +110,6 @@ class Level1 extends Phaser.Scene {
         // But start with the debug visuals OFF.
         this.physics.world.debugGraphic.setVisible(false);
 
-        // --- Display Controls (World Space, Background Element) ---
-        const controlStyle = {
-            fontSize: '16px',
-            fill: '#FFFFFF',
-            fontFamily: 'Arial, sans-serif', // Consider using a game-specific font if you have one loaded
-            stroke: '#000000',
-            strokeThickness: 3
-        };
-
-        // Position controls in the world, near the player's spawn point's bottom-left.
-        // Player spawns at this.playerStartX, this.playerStartY.
-        // We'll place the text slightly to the right and below the direct spawn point.
-        const textBlockX = this.playerStartX ; // X position in the world
-        const textBlockBottomY = this.playerStartY - 90; // Y position in the world for the bottom line of text
-
-        const lineHeight = 22;
-        let currentTextY = textBlockBottomY; // Start from this Y and stack text upwards
-
-        const controlsDepth = 5; // Render behind player (20) and ground (10), but above far background (0)
-
-        this.add.text(textBlockX, currentTextY, "T: Toggle Timer", controlStyle)
-            .setOrigin(0, 1)
-            .setDepth(controlsDepth);
-            
-        currentTextY -= lineHeight;
-        this.add.text(textBlockX, currentTextY, "R: Reset Level", controlStyle)
-            .setOrigin(0, 1)
-            .setDepth(controlsDepth);
-
-        currentTextY -= lineHeight;
-        this.add.text(textBlockX, currentTextY, "D: Toggle Debug", controlStyle)
-            .setOrigin(0, 1) // Bottom-left origin for easy stacking from bottom up
-            // .setScrollFactor(0) // REMOVED - Text will now scroll with the camera
-            .setDepth(controlsDepth);
-
-        currentTextY -= lineHeight;
-        this.add.text(textBlockX, currentTextY, "C: Dash", controlStyle)
-            .setOrigin(0, 1)
-            .setDepth(controlsDepth);
-
-        currentTextY -= lineHeight;
-        this.add.text(textBlockX, currentTextY, "X: Pogo Slash", controlStyle)
-            .setOrigin(0, 1)
-            .setDepth(controlsDepth);
-
-        currentTextY -= lineHeight;
-        this.add.text(textBlockX, currentTextY, "Z: Jump", controlStyle)
-            .setOrigin(0, 1)
-            .setDepth(controlsDepth);
-
-        currentTextY -= lineHeight;
-        this.add.text(textBlockX, currentTextY, "Arrow Keys: Move", controlStyle)
-            .setOrigin(0, 1)
-            .setDepth(controlsDepth);
-
-        currentTextY -= (lineHeight + 5); // Extra space for the title
-        this.add.text(textBlockX, currentTextY, "Controls:", { ...controlStyle, fontSize: '18px' })
-            .setOrigin(0, 1)
-            .setDepth(controlsDepth);
-        // --- End Display Controls ---
 
         const objectLayer = this.map.getObjectLayer('Spikes&Objects'); //
         const layerScale = this.groundLayer.scaleX; //
@@ -206,7 +145,7 @@ class Level1 extends Phaser.Scene {
                     endZone.body.setAllowGravity(false);
                     endZone.setOrigin(0.5, 1.5); // Center the end zone
                     endZone.setScale(1);
-                    endZone.setOffset(0, -scaledHeight + 80); // Adjust offset to match the Tiled object
+                    endZone.setOffset(-16, -scaledHeight + 80); // Adjust offset to match the Tiled object
                     this.physics.add.overlap(this.player.physicsSprite, endZone, () => {
                         // Get the elapsed time in milliseconds directly from our new timer
                         const timeTakenMs = this.levelTimer.getElapsed();
@@ -217,9 +156,9 @@ class Level1 extends Phaser.Scene {
                             deaths: this.playerDeaths,
                             collectibles: this.collectiblesGathered,
                             totalCollectibles: this.totalCollectiblesInLevel,
-                            levelKey: "level1Scene", // Make sure this is correct for each level
-                            nextLevelKey: "level2Scene", // Make sure this is correct for each level
-                            isEndOfGame: false, // Make sure this is correct for each level
+                            levelKey: "level2Scene", // Make sure this is correct for each level
+                            // nextLevelKey: "level2Scene", // Make sure this is correct for each level
+                            isEndOfGame: true, // Make sure this is correct for each level
                             timeTakenMs: timeTakenMs, // Pass the new calculated time
                             cameFrom: this.startContext.from 
                         });
@@ -252,7 +191,6 @@ class Level1 extends Phaser.Scene {
 
     update(time, delta) {
         this.player.update(time, delta); // Call the player's update method
-
         // --- Update the on-screen timer ---
         // Get the elapsed time in seconds from our level's timer
         const elapsedSeconds = this.levelTimer.getElapsedSeconds();
