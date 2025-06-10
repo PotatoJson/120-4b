@@ -217,8 +217,8 @@ class LevelOG extends Phaser.Scene {
                             deaths: this.playerDeaths,
                             collectibles: this.collectiblesGathered,
                             totalCollectibles: this.totalCollectiblesInLevel,
-                            levelKey: "level1Scene", // Make sure this is correct for each level
-                            nextLevelKey: "level2Scene", // Make sure this is correct for each level
+                            levelKey: "levelOGScene", // Make sure this is correct for each level
+                            // nextLevelKey: "level2Scene", // Make sure this is correct for each level
                             isEndOfGame: false, // Make sure this is correct for each level
                             timeTakenMs: timeTakenMs, // Pass the new calculated time
                             cameFrom: this.startContext.from 
